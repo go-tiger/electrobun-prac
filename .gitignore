@@ -1,1 +1,34 @@
+# Dependencies
+node_modules/
+bun.lockb
+
+# Build outputs
+build/
+dist/
+out/
+
+# Development
 .claude/
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+bun-debug.log*
+
+# Misc
+.cache/
+*.tmp
