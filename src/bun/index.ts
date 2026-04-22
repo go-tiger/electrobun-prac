@@ -134,14 +134,10 @@ del "%~f0"
 `,
     );
 
-    // schtasks로 배치 스크립트 예약 실행 (앱 종료 후에도 독립적으로 실행됨)
-    const taskName = `ElectrobunUpdate_${Date.now()}`;
-    Bun.spawnSync([
-      'schtasks', '/create', '/tn', taskName,
-      '/tr', `cmd /c "${scriptPath}"`,
-      '/sc', 'once', '/st', '00:00', '/f',
-    ], { stdio: ['ignore', 'ignore', 'ignore'] });
-    Bun.spawnSync(['schtasks', '/run', '/tn', taskName], { stdio: ['ignore', 'ignore', 'ignore'] });
+    // VBS로 배치 스크립트를 숨겨진 창으로 실행 (cmd 창 안 뜸)
+    const vbsPath = join(tmpdir(), 'electrobun-update.vbs').replace(/\//g, '\\');
+    await Bun.write(vbsPath, `CreateObject("WScript.Shell").Run "${scriptPath}", 0, False\n`);
+    Bun.spawnSync(['wscript', '//B', '//NoLogo', vbsPath], { stdio: ['ignore', 'ignore', 'ignore'] });
     process.exit(0);
   } catch (e) {
     console.error('Update failed:', e);
