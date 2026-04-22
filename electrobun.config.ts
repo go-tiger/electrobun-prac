@@ -39,6 +39,7 @@ export default {
 	version,
 	author: "go-tiger",
 	windows: {
+		icon: "assets/icon.ico",
 		productId: "reacttailwindvite.electrobun.dev",
 		installDir: appName,
 	},
