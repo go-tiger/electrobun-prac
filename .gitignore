@@ -6,6 +6,7 @@ bun.lockb
 build/
 dist/
 out/
+artifacts/
 
 # Development
 .claude/
