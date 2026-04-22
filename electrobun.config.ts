@@ -1,9 +1,8 @@
-import type { ElectrobunConfig } from "electrobun";
-import { version } from "./package.json";
-
 const appName = "react-tailwind-vite";
+const version = "0.0.2";
 
-const electrobunConfig = {
+export default {
+	// electrobun fields
 	app: {
 		name: appName,
 		identifier: "reacttailwindvite.electrobun.dev",
@@ -13,28 +12,22 @@ const electrobunConfig = {
 		baseUrl: "https://github.com/go-tiger/electrobun-prac/releases/latest/download",
 	},
 	build: {
-		// Vite builds to dist/, we copy from there
 		copy: {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets": "views/mainview/assets",
 		},
-		// Ignore Vite output in watch mode — HMR handles view rebuilds separately
 		watchIgnore: ["dist/**"],
-		mac: {
-			bundleCEF: false,
-		},
-		linux: {
-			bundleCEF: false,
-		},
+		mac: { bundleCEF: false },
+		linux: { bundleCEF: false },
 		win: {
 			bundleCEF: false,
+			icon: "assets/icon.ico",
+			productId: "reacttailwindvite.electrobun.dev",
+			installDir: appName,
+			useAsar: false,
 		},
 	},
-} satisfies ElectrobunConfig;
-
-// electrobun-builder-for-windows reads these top-level fields from this file
-export default {
-	...electrobunConfig,
+	// electrobun-builder-for-windows fields
 	name: appName,
 	version,
 	author: "go-tiger",
