@@ -1,5 +1,4 @@
 import { BrowserWindow, BrowserView, Updater } from "electrobun/bun";
-import type { UpdateStatusEntry } from "electrobun/bun";
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawnSync } from "child_process";
@@ -23,24 +22,9 @@ async function getMainViewUrl(): Promise<string> {
 	return "views://mainview/index.html";
 }
 
-// bun handles: checkForUpdate, downloadUpdate, applyUpdate, getUpdateInfo, getAppVersion
-// webview handles: onUpdateStatus (called by bun to push status)
 const rpc = BrowserView.defineRPC({
 	handlers: {
 		requests: {
-			async checkForUpdate() {
-				return await Updater.checkForUpdate();
-			},
-			async downloadUpdate() {
-				await Updater.downloadUpdate();
-				return Updater.updateInfo() ?? null;
-			},
-			async applyUpdate() {
-				await Updater.applyUpdate();
-			},
-			async getUpdateInfo() {
-				return Updater.updateInfo() ?? null;
-			},
 			async getAppVersion() {
 				const version = await Updater.localInfo.version();
 				const hash = await Updater.localInfo.hash();
@@ -53,7 +37,7 @@ const rpc = BrowserView.defineRPC({
 
 const url = await getMainViewUrl();
 
-const mainWindow = new BrowserWindow({
+new BrowserWindow({
 	title: "React + Tailwind + Vite",
 	url,
 	rpc,
@@ -63,14 +47,6 @@ const mainWindow = new BrowserWindow({
 		x: 200,
 		y: 200,
 	},
-});
-
-// Push update status changes to the webview via request
-Updater.onStatusChange((entry: UpdateStatusEntry) => {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	(mainWindow.webview.rpc?.request as any)
-		?.onUpdateStatus?.(entry)
-		?.catch?.(() => {});
 });
 
 async function checkAndApplyUpdate() {
