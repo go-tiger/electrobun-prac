@@ -41,6 +41,10 @@ jobs:
             bun run build:stable
           }
 
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis -y
+
       - name: Build NSIS installer
         shell: pwsh
         run: bunx electrobun-builder build --target nsis
