@@ -83,9 +83,9 @@ async function checkForUpdateAndOpen() {
 
   // 업데이트 있으면 업데이트 창 먼저 열기
   const updateWindow = new BrowserWindow({
-    title: '업데이트 중...',
+    title: 'Updating...',
     html: makeUpdateHtml('Downloading new version...'),
-    frame: { width: 400, height: 280, x: 0, y: 0 },
+    frame: { width: 400, height: 280, x: 500, y: 300 },
   });
 
   try {
@@ -134,10 +134,17 @@ del "%~f0"
 `,
     );
 
-    // 배치 스크립트를 분리된 프로세스로 실행 후 즉시 앱 종료
-    Bun.spawn(['cmd', '/c', scriptPath], { stdio: ['ignore', 'ignore', 'ignore'] });
+    // schtasks로 배치 스크립트 예약 실행 (앱 종료 후에도 독립적으로 실행됨)
+    const taskName = `ElectrobunUpdate_${Date.now()}`;
+    Bun.spawnSync([
+      'schtasks', '/create', '/tn', taskName,
+      '/tr', `cmd /c "${scriptPath}"`,
+      '/sc', 'once', '/st', '00:00', '/f',
+    ], { stdio: ['ignore', 'ignore', 'ignore'] });
+    Bun.spawnSync(['schtasks', '/run', '/tn', taskName], { stdio: ['ignore', 'ignore', 'ignore'] });
     process.exit(0);
-  } catch {
+  } catch (e) {
+    console.error('Update failed:', e);
     // 다운로드 실패 시 메인 창으로 fallback
     const url = await getMainViewUrl();
     new BrowserWindow({
