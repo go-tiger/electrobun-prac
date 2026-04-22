@@ -6,6 +6,9 @@ export default {
 		identifier: "reacttailwindvite.electrobun.dev",
 		version: "0.0.1",
 	},
+	release: {
+		baseUrl: "https://github.com/go-tiger/electrobun-prac/releases/latest/download",
+	},
 	build: {
 		// Vite builds to dist/, we copy from there
 		copy: {

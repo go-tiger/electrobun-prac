@@ -1,9 +1,9 @@
-import { BrowserWindow, Updater } from "electrobun/bun";
+import { BrowserWindow, BrowserView, Updater } from "electrobun/bun";
+import type { UpdateStatusEntry } from "electrobun/bun";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 
-// Check if Vite dev server is running for HMR
 async function getMainViewUrl(): Promise<string> {
 	const channel = await Updater.localInfo.channel();
 	if (channel === "dev") {
@@ -20,12 +20,40 @@ async function getMainViewUrl(): Promise<string> {
 	return "views://mainview/index.html";
 }
 
-// Create the main application window
+// bun handles: checkForUpdate, downloadUpdate, applyUpdate, getUpdateInfo, getAppVersion
+// webview handles: onUpdateStatus (called by bun to push status)
+const rpc = BrowserView.defineRPC({
+	handlers: {
+		requests: {
+			async checkForUpdate() {
+				return await Updater.checkForUpdate();
+			},
+			async downloadUpdate() {
+				await Updater.downloadUpdate();
+				return Updater.updateInfo() ?? null;
+			},
+			async applyUpdate() {
+				await Updater.applyUpdate();
+			},
+			async getUpdateInfo() {
+				return Updater.updateInfo() ?? null;
+			},
+			async getAppVersion() {
+				const version = await Updater.localInfo.version();
+				const hash = await Updater.localInfo.hash();
+				const channel = await Updater.localInfo.channel();
+				return { version, hash: hash.slice(0, 8), channel };
+			},
+		},
+	},
+});
+
 const url = await getMainViewUrl();
 
 const mainWindow = new BrowserWindow({
 	title: "React + Tailwind + Vite",
 	url,
+	rpc,
 	frame: {
 		width: 900,
 		height: 700,
@@ -33,5 +61,26 @@ const mainWindow = new BrowserWindow({
 		y: 200,
 	},
 });
+
+// Push update status changes to the webview via request
+Updater.onStatusChange((entry: UpdateStatusEntry) => {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	(mainWindow.webview.rpc?.request as any)
+		?.onUpdateStatus?.(entry)
+		?.catch?.(() => {});
+});
+
+// Auto-check every hour (dev channel is a no-op inside Updater)
+const ONE_HOUR = 60 * 60 * 1000;
+setInterval(async () => {
+	try {
+		const info = await Updater.checkForUpdate();
+		if (info.updateAvailable) {
+			await Updater.downloadUpdate();
+		}
+	} catch {
+		// ignore
+	}
+}, ONE_HOUR);
 
 console.log("React Tailwind Vite app started!");
