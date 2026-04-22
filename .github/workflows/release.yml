@@ -19,26 +19,27 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
+        shell: pwsh
         run: bun install
 
       - name: Determine build environment
         id: build-env
-        shell: bash
+        shell: pwsh
         run: |
-          if [[ "${{ github.ref_name }}" == *"-canary"* ]]; then
-            echo "env=canary" >> $GITHUB_OUTPUT
-          else
-            echo "env=stable" >> $GITHUB_OUTPUT
-          fi
+          if ("${{ github.ref_name }}" -like "*-canary*") {
+            echo "env=canary" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "env=stable" >> $env:GITHUB_OUTPUT
+          }
 
       - name: Build app
-        shell: bash
+        shell: pwsh
         run: |
-          if [ "${{ steps.build-env.outputs.env }}" = "canary" ]; then
+          if ("${{ steps.build-env.outputs.env }}" -eq "canary") {
             bun run build:canary
-          else
+          } else {
             bun run build:stable
-          fi
+          }
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
