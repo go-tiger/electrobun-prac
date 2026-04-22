@@ -4,44 +4,24 @@ import { electroview, updateEvents, type UpdateStatusEntry } from "./electroview
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rpc = (electroview.rpc as any)?.request;
 
-type UpdateStatus =
-	| "idle"
-	| "checking"
-	| "no-update"
-	| "update-available"
-	| "downloading"
-	| "download-complete"
-	| "error";
-
 type AppVersion = { version: string; hash: string; channel: string };
 
 export default function UpdateBanner() {
 	const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
-	const [status, setStatus] = useState<UpdateStatus>("idle");
-	const [message, setMessage] = useState("");
-	const [progress, setProgress] = useState<number | undefined>(undefined);
 	const [updateReady, setUpdateReady] = useState(false);
+	const [downloading, setDownloading] = useState(false);
+	const [progress, setProgress] = useState<number | undefined>(undefined);
+	const [errorMsg, setErrorMsg] = useState("");
 
 	useEffect(() => {
-		rpc.getAppVersion().then(setAppVersion).catch(() => {});
+		rpc?.getAppVersion().then(setAppVersion).catch(() => {});
 
 		return updateEvents.subscribe((entry: UpdateStatusEntry) => {
-			setMessage(entry.message);
 			if (entry.details?.progress !== undefined) {
 				setProgress(entry.details.progress);
 			}
 
 			switch (entry.status) {
-				case "checking":
-					setStatus("checking");
-					break;
-				case "no-update":
-					setStatus("no-update");
-					setTimeout(() => setStatus("idle"), 3000);
-					break;
-				case "update-available":
-					setStatus("update-available");
-					break;
 				case "downloading":
 				case "download-starting":
 				case "downloading-full-bundle":
@@ -50,148 +30,82 @@ export default function UpdateBanner() {
 				case "fetching-patch":
 				case "downloading-patch":
 				case "applying-patch":
-					setStatus("downloading");
+					setDownloading(true);
+					setErrorMsg("");
 					break;
 				case "download-complete":
 				case "patch-chain-complete":
-					setStatus("download-complete");
+					setDownloading(false);
 					setUpdateReady(true);
 					setProgress(undefined);
 					break;
 				case "error":
-					setStatus("error");
+					setDownloading(false);
 					setProgress(undefined);
+					setErrorMsg(entry.details?.errorMessage ?? entry.message);
+					break;
+				default:
 					break;
 			}
 		});
 	}, []);
 
-	async function handleCheck() {
-		setStatus("checking");
-		setMessage("업데이트 확인 중...");
-		try {
-			const info = await rpc.checkForUpdate();
-			if (info?.updateAvailable) {
-				setStatus("update-available");
-				setMessage(`새 버전 발견${info.version ? `: ${info.version}` : ""}`);
-			} else if (!info?.error) {
-				setStatus("no-update");
-				setMessage("최신 버전입니다");
-				setTimeout(() => setStatus("idle"), 3000);
-			} else {
-				setStatus("error");
-				setMessage(info.error);
-			}
-		} catch {
-			setStatus("error");
-			setMessage("업데이트 확인 실패");
-		}
-	}
-
-	async function handleDownload() {
-		setStatus("downloading");
-		setProgress(0);
-		try {
-			await rpc.downloadUpdate();
-		} catch {
-			setStatus("error");
-			setMessage("다운로드 실패");
-		}
-	}
-
 	async function handleApply() {
-		await rpc.applyUpdate();
+		await rpc?.applyUpdate();
 	}
 
 	const isDev = appVersion?.channel === "dev";
 
+	if (isDev || (!updateReady && !downloading && !errorMsg)) return null;
+
 	return (
-		<div className="bg-white rounded-xl shadow-xl p-6 mb-8">
-			<div className="flex items-center justify-between mb-4">
-				<h2 className="text-2xl font-semibold text-indigo-600">자동 업데이트</h2>
-				{appVersion && (
-					<span className="text-sm text-gray-400 font-mono">
-						v{appVersion.version} ({appVersion.hash})
-						{appVersion.channel !== "release" && (
-							<span className="ml-2 bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-xs">
-								{appVersion.channel}
-							</span>
-						)}
-					</span>
+		<div
+			className={`rounded-xl shadow-xl p-4 mb-8 flex items-center justify-between gap-4 ${
+				updateReady
+					? "bg-green-50 border border-green-200"
+					: errorMsg
+						? "bg-red-50 border border-red-200"
+						: "bg-blue-50 border border-blue-200"
+			}`}
+		>
+			<div className="flex items-center gap-3 flex-1">
+				{downloading && (
+					<div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
 				)}
+				<div className="flex-1">
+					{downloading && (
+						<>
+							<p className="text-sm font-medium text-blue-700">업데이트 다운로드 중...</p>
+							{progress !== undefined && (
+								<div className="mt-1 w-full bg-blue-200 rounded-full h-1.5">
+									<div
+										className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+										style={{ width: `${progress}%` }}
+									/>
+								</div>
+							)}
+						</>
+					)}
+					{updateReady && (
+						<p className="text-sm font-medium text-green-700">
+							새 버전이 준비됐습니다. 재시작하여 업데이트를 적용하세요.
+						</p>
+					)}
+					{errorMsg && (
+						<p className="text-sm font-medium text-red-600">
+							업데이트 오류: {errorMsg}
+						</p>
+					)}
+				</div>
 			</div>
 
-			{isDev ? (
-				<p className="text-gray-500 text-sm">
-					개발 채널에서는 자동 업데이트가 비활성화됩니다.
-				</p>
-			) : (
-				<>
-					<div className="flex items-center gap-3 flex-wrap">
-						{(status === "idle" || status === "no-update" || status === "error") && (
-							<button
-								onClick={handleCheck}
-								className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-							>
-								업데이트 확인
-							</button>
-						)}
-
-						{status === "update-available" && (
-							<button
-								onClick={handleDownload}
-								className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-							>
-								다운로드
-							</button>
-						)}
-
-						{(status === "download-complete" || updateReady) && (
-							<button
-								onClick={handleApply}
-								className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
-							>
-								재시작하여 업데이트 적용
-							</button>
-						)}
-
-						{message && (
-							<span
-								className={`text-sm ${
-									status === "error"
-										? "text-red-500"
-										: status === "no-update"
-											? "text-green-600"
-											: "text-gray-600"
-								}`}
-							>
-								{message}
-							</span>
-						)}
-					</div>
-
-					{status === "downloading" && progress !== undefined && (
-						<div className="mt-3">
-							<div className="flex justify-between text-xs text-gray-500 mb-1">
-								<span>다운로드 중...</span>
-								<span>{progress}%</span>
-							</div>
-							<div className="w-full bg-gray-200 rounded-full h-2">
-								<div
-									className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
-									style={{ width: `${progress}%` }}
-								/>
-							</div>
-						</div>
-					)}
-
-					{status === "downloading" && progress === undefined && (
-						<div className="mt-3 flex items-center gap-2 text-sm text-gray-500">
-							<div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-							<span>{message}</span>
-						</div>
-					)}
-				</>
+			{updateReady && (
+				<button
+					onClick={handleApply}
+					className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors flex-shrink-0"
+				>
+					재시작
+				</button>
 			)}
 		</div>
 	);

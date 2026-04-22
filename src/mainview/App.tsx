@@ -1,5 +1,4 @@
 import { useState } from "react";
-import UpdateBanner from "./UpdateBanner";
 
 function App() {
 	const [count, setCount] = useState(0);
@@ -77,9 +76,7 @@ function App() {
 					</ul>
 				</div>
 
-				<UpdateBanner />
-
-				<div className="bg-white rounded-xl shadow-xl p-8 mt-8">
+				<div className="bg-white rounded-xl shadow-xl p-8">
 					<h2 className="text-2xl font-semibold text-indigo-600 mb-4">Stack</h2>
 					<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 						<div className="text-center p-4 bg-gray-50 rounded-lg">

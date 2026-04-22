@@ -70,17 +70,23 @@ Updater.onStatusChange((entry: UpdateStatusEntry) => {
 		?.catch?.(() => {});
 });
 
-// Auto-check every hour (dev channel is a no-op inside Updater)
-const ONE_HOUR = 60 * 60 * 1000;
-setInterval(async () => {
+async function checkAndApplyUpdate() {
 	try {
 		const info = await Updater.checkForUpdate();
 		if (info.updateAvailable) {
 			await Updater.downloadUpdate();
+			await Updater.applyUpdate(); // 다운로드 완료 즉시 재시작
 		}
 	} catch {
 		// ignore
 	}
-}, ONE_HOUR);
+}
+
+// 앱 시작 3초 후 자동 체크 (webview 로딩 완료 후)
+setTimeout(checkAndApplyUpdate, 3000);
+
+// 이후 1시간마다 반복 체크
+const ONE_HOUR = 60 * 60 * 1000;
+setInterval(checkAndApplyUpdate, ONE_HOUR);
 
 console.log("React Tailwind Vite app started!");
