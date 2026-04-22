@@ -43,7 +43,7 @@ jobs:
 
       - name: Build NSIS installer
         shell: pwsh
-        run: npx electrobun-builder build --target nsis
+        run: bunx electrobun-builder build --target nsis
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
