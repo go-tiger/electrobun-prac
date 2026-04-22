@@ -1,7 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { electroview } from "./electroview";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const rpc = (electroview.rpc as any)?.request;
 
 function App() {
 	const [count, setCount] = useState(0);
+	const [version, setVersion] = useState("");
+
+	useEffect(() => {
+		rpc?.getAppVersion().then((info: { version: string }) => setVersion(info.version)).catch(() => {});
+	}, []);
 
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-indigo-500 to-purple-600 text-gray-900">
@@ -106,6 +115,9 @@ function App() {
 						</code>{" "}
 						and save to see HMR in action
 					</p>
+					{version && (
+						<p className="mt-2 text-white/50 text-xs">v{version}</p>
+					)}
 				</div>
 			</div>
 		</div>
