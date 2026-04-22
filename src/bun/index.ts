@@ -1,5 +1,8 @@
 import { BrowserWindow, BrowserView, Updater } from "electrobun/bun";
 import type { UpdateStatusEntry } from "electrobun/bun";
+import { join } from "path";
+import { tmpdir } from "os";
+import { spawnSync } from "child_process";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -73,10 +76,18 @@ Updater.onStatusChange((entry: UpdateStatusEntry) => {
 async function checkAndApplyUpdate() {
 	try {
 		const info = await Updater.checkForUpdate();
-		if (info.updateAvailable) {
-			await Updater.downloadUpdate();
-			await Updater.applyUpdate(); // 다운로드 완료 즉시 재시작
-		}
+		if (!info.updateAvailable) return;
+
+		const baseUrl = await Updater.localInfo.baseUrl();
+		const installerUrl = `${baseUrl}/react-tailwind-vite-setup.exe`;
+		const installerPath = join(tmpdir(), "react-tailwind-vite-setup.exe");
+
+		const res = await fetch(installerUrl);
+		if (!res.ok) return;
+		await Bun.write(installerPath, await res.arrayBuffer());
+
+		spawnSync("cmd", ["/c", "start", "", installerPath]);
+		process.exit(0);
 	} catch {
 		// ignore
 	}
