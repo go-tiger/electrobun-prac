@@ -41,10 +41,16 @@ jobs:
             bun run build:stable
           }
 
+      - name: Build NSIS installer
+        shell: pwsh
+        run: npx electrobun-builder build --target nsis
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: artifacts/*
+          files: |
+            artifacts/*
+            dist/*-setup.exe
           draft: false
           prerelease: ${{ steps.build-env.outputs.env == 'canary' }}
           generate_release_notes: true

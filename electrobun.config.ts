@@ -1,10 +1,11 @@
 import type { ElectrobunConfig } from "electrobun";
+import { version } from "./package.json";
 
 export default {
 	app: {
 		name: "react-tailwind-vite",
 		identifier: "reacttailwindvite.electrobun.dev",
-		version: "0.0.1",
+		version,
 	},
 	release: {
 		baseUrl: "https://github.com/go-tiger/electrobun-prac/releases/latest/download",
