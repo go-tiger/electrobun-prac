@@ -1,9 +1,11 @@
 import type { ElectrobunConfig } from "electrobun";
 import { version } from "./package.json";
 
-export default {
+const appName = "react-tailwind-vite";
+
+const electrobunConfig = {
 	app: {
-		name: "react-tailwind-vite",
+		name: appName,
 		identifier: "reacttailwindvite.electrobun.dev",
 		version,
 	},
@@ -29,3 +31,15 @@ export default {
 		},
 	},
 } satisfies ElectrobunConfig;
+
+// electrobun-builder-for-windows reads these top-level fields from this file
+export default {
+	...electrobunConfig,
+	name: appName,
+	version,
+	author: "go-tiger",
+	windows: {
+		productId: "reacttailwindvite.electrobun.dev",
+		installDir: appName,
+	},
+};
