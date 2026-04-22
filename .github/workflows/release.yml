@@ -59,4 +59,4 @@ jobs:
           prerelease: ${{ steps.build-env.outputs.env == 'canary' }}
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
