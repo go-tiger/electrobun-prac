@@ -60,7 +60,7 @@ function makeUpdateHtml(message: string, progress?: number): string {
   .dot:nth-child(2){animation-delay:-0.16s}
 </style></head><body>
 <div class="card">
-  <h1>업데이트 중...</h1>
+  <h1>Updating...</h1>
   <p>${message}</p>
   ${bar}
 </div>
@@ -84,7 +84,7 @@ async function checkForUpdateAndOpen() {
   // 업데이트 있으면 업데이트 창 먼저 열기
   const updateWindow = new BrowserWindow({
     title: '업데이트 중...',
-    html: makeUpdateHtml('새 버전을 다운로드하고 있습니다.'),
+    html: makeUpdateHtml('Downloading new version...'),
     frame: { width: 400, height: 280, x: 0, y: 0 },
   });
 
@@ -111,13 +111,13 @@ async function checkForUpdateAndOpen() {
 
       if (totalBytes) {
         const progress = Math.round((downloaded / totalBytes) * 100);
-        updateWindow.webview.loadHTML(makeUpdateHtml('새 버전을 다운로드하고 있습니다.', progress));
+        updateWindow.webview.loadHTML(makeUpdateHtml('Downloading new version...', progress));
       }
     }
     await writer.flush();
     writer.end();
 
-    updateWindow.webview.loadHTML(makeUpdateHtml('설치를 시작합니다...', 100));
+    updateWindow.webview.loadHTML(makeUpdateHtml('Installing...', 100));
 
     // 설치 완료 후 앱 자동 실행을 위한 배치 스크립트
     const installDir = join(process.env['LOCALAPPDATA'] || '', 'react-tailwind-vite');
@@ -128,9 +128,7 @@ async function checkForUpdateAndOpen() {
     await Bun.write(
       scriptPath,
       `@echo off
-:: 인스톨러 실행 (UI 없이 설치)
 "${installerPathWin}" /S
-:: 설치 완료 후 앱 실행
 start "" "${launcherPath}"
 del "%~f0"
 `,
