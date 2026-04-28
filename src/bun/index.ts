@@ -1,6 +1,8 @@
 import { BrowserWindow, BrowserView, Updater } from 'electrobun/bun';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { startLoginFlow, loadTokens, refreshTokensIfNeeded } from './auth';
+import type { LauncherRPCSchema } from '../shared/rpcSchema';
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -18,7 +20,7 @@ async function getMainViewUrl(): Promise<string> {
   return 'views://mainview/index.html';
 }
 
-const rpc = BrowserView.defineRPC({
+const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
   handlers: {
     requests: {
       async getAppVersion() {
@@ -26,6 +28,30 @@ const rpc = BrowserView.defineRPC({
         const hash = await Updater.localInfo.hash();
         const channel = await Updater.localInfo.channel();
         return { version, hash: hash.slice(0, 8), channel };
+      },
+      async getAuthStatus() {
+        const tokens = await loadTokens();
+        if (!tokens) return { loggedIn: false, username: null };
+        return { loggedIn: true, username: tokens.mcUsername };
+      },
+      async logout() {
+        const path = join(
+          process.env['APPDATA'] || process.env['HOME'] || '.',
+          'mc-launcher',
+          'tokens.json'
+        );
+        await Bun.write(path, '');
+        return { loggedIn: false, username: null };
+      },
+    },
+    messages: {
+      async startLogin(_payload: Record<string, never>) {
+        try {
+          const tokens = await startLoginFlow();
+          rpc.send.loginResult({ success: true, username: tokens.mcUsername });
+        } catch (e: any) {
+          rpc.send.loginResult({ success: false, error: e?.message ?? '로그인 실패' });
+        }
       },
     },
   },
@@ -68,6 +94,9 @@ function makeUpdateHtml(message: string, progress?: number): string {
 }
 
 async function checkForUpdateAndOpen() {
+  // 저장된 토큰이 있으면 백그라운드에서 갱신 (실패해도 무시 — UI에서 로그인 상태 표시)
+  refreshTokensIfNeeded().catch(() => {});
+
   const info = await Updater.checkForUpdate().catch(() => null);
 
   if (!info?.updateAvailable) {
