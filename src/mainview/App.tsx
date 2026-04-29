@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { electroview } from "./electroview";
+import type { ServerConfig, JavaState } from "../shared/rpcSchema";
 
 const rpcRequest = (electroview.rpc as any)?.request;
 const rpcSend = (electroview.rpc as any)?.send;
@@ -14,6 +15,9 @@ type AuthState =
 function App() {
 	const [auth, setAuth] = useState<AuthState>({ status: "loading" });
 	const [version, setVersion] = useState("");
+	const [servers, setServers] = useState<ServerConfig[]>([]);
+	const [selectedServer, setSelectedServer] = useState<ServerConfig | null>(null);
+	const [javaStates, setJavaStates] = useState<Record<number, JavaState>>({});
 
 	useEffect(() => {
 		rpcRequest?.getAppVersion()
@@ -30,12 +34,33 @@ function App() {
 			})
 			.catch(() => setAuth({ status: "loggedOut" }));
 
-		// bun에서 로그인 결과 수신
+		rpcRequest?.getServers()
+			.then((res: { servers: ServerConfig[] }) => {
+				setServers(res.servers);
+				if (res.servers.length > 0) setSelectedServer(res.servers[0]);
+			})
+			.catch(() => {});
+
 		rpcListen?.("loginResult", (payload: { success: boolean; username?: string; error?: string }) => {
 			if (payload.success && payload.username) {
 				setAuth({ status: "loggedIn", username: payload.username });
 			} else {
 				setAuth({ status: "error", message: payload.error ?? "로그인 실패" });
+			}
+		});
+
+		rpcListen?.("javaStatus", (payload: JavaState) => {
+			if (payload.status === "ready" || payload.status === "downloading") {
+				setJavaStates(prev => ({ ...prev, [payload.version]: payload }));
+			} else if (payload.status === "error") {
+				// 에러는 모든 버전에 표시
+				setJavaStates(prev => {
+					const next = { ...prev };
+					Object.keys(next).forEach(k => {
+						next[Number(k)] = payload;
+					});
+					return next;
+				});
 			}
 		});
 	}, []);
@@ -50,9 +75,17 @@ function App() {
 		setAuth({ status: "loggedOut" });
 	}
 
+	const requiredJavaVersion = selectedServer
+		? getRequiredJavaVersion(selectedServer.mcVersion)
+		: null;
+
+	const javaState = requiredJavaVersion ? javaStates[requiredJavaVersion] : undefined;
+	const javaReady = javaState?.status === "ready";
+	const canPlay = auth.status === "loggedIn" && javaReady;
+
 	return (
 		<div className="h-screen bg-[#1a1a2e] text-white flex flex-col select-none">
-			{/* 상단 헤더 */}
+			{/* 헤더 */}
 			<header className="flex items-center justify-between px-6 py-4 bg-[#16213e] border-b border-white/10">
 				<div className="flex items-center gap-3">
 					<div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center font-bold text-sm">
@@ -72,38 +105,66 @@ function App() {
 							</button>
 						</>
 					)}
-					{version && (
-						<span className="text-xs text-white/30">v{version}</span>
-					)}
+					{version && <span className="text-xs text-white/30">v{version}</span>}
 				</div>
 			</header>
 
-			{/* 메인 콘텐츠 */}
-			<main className="flex-1 flex flex-col items-center justify-center gap-8 px-8">
-				<div className="text-center">
-					<h1 className="text-4xl font-bold mb-2 text-green-400">우리 서버</h1>
-					<p className="text-white/50 text-sm">Fabric 1.20.1 · 모드팩 v1.0</p>
-				</div>
+			<main className="flex-1 flex flex-col items-center justify-center gap-6 px-8">
+				{/* 서버 선택 */}
+				{servers.length > 1 && (
+					<div className="flex gap-2">
+						{servers.map(s => (
+							<button
+								key={s.id}
+								onClick={() => setSelectedServer(s)}
+								className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+									selectedServer?.id === s.id
+										? "bg-green-500 text-white"
+										: "bg-white/10 text-white/60 hover:bg-white/20"
+								}`}
+							>
+								{s.name}
+							</button>
+						))}
+					</div>
+				)}
 
-				<div className="w-full max-w-md bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
-					<div className="flex items-center justify-between text-sm">
-						<span className="text-white/50">서버</span>
-						<span className="text-white/80 font-mono">play.example.com</span>
-					</div>
-					<div className="flex items-center justify-between text-sm">
-						<span className="text-white/50">버전</span>
-						<span className="text-white/80">1.20.1</span>
-					</div>
-					<div className="flex items-center justify-between text-sm">
-						<span className="text-white/50">모드 로더</span>
-						<span className="text-white/80">Fabric</span>
-					</div>
-					<div className="flex items-center justify-between text-sm">
-						<span className="text-white/50">모드팩</span>
-						<span className="text-white/80">v1.0.0</span>
-					</div>
-				</div>
+				{/* 서버 정보 */}
+				{selectedServer ? (
+					<>
+						<div className="text-center">
+							<h1 className="text-4xl font-bold mb-2 text-green-400">{selectedServer.name}</h1>
+							<p className="text-white/50 text-sm">
+								{selectedServer.modLoader.toUpperCase()} {selectedServer.mcVersion}
+							</p>
+						</div>
 
+						<div className="w-full max-w-md bg-white/5 border border-white/10 rounded-2xl p-6 space-y-4">
+							<div className="flex items-center justify-between text-sm">
+								<span className="text-white/50">서버</span>
+								<span className="text-white/80 font-mono">
+									{selectedServer.ip}{selectedServer.port ? `:${selectedServer.port}` : ""}
+								</span>
+							</div>
+							<div className="flex items-center justify-between text-sm">
+								<span className="text-white/50">버전</span>
+								<span className="text-white/80">{selectedServer.mcVersion}</span>
+							</div>
+							<div className="flex items-center justify-between text-sm">
+								<span className="text-white/50">모드 로더</span>
+								<span className="text-white/80 capitalize">{selectedServer.modLoader}</span>
+							</div>
+							<div className="flex items-center justify-between text-sm">
+								<span className="text-white/50">Java</span>
+								<JavaStatusBadge state={javaState} version={requiredJavaVersion!} />
+							</div>
+						</div>
+					</>
+				) : (
+					<div className="text-center text-white/30 text-sm">등록된 서버가 없습니다.</div>
+				)}
+
+				{/* 인증 영역 */}
 				{auth.status === "loading" && (
 					<div className="flex gap-2 items-center text-white/40">
 						<div className="w-4 h-4 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
@@ -124,8 +185,21 @@ function App() {
 				)}
 
 				{auth.status === "loggedIn" && (
-					<button className="w-full max-w-md py-4 bg-green-500 hover:bg-green-400 active:bg-green-600 rounded-xl font-bold text-lg transition-colors shadow-lg shadow-green-900/40">
-						플레이
+					<button
+						disabled={!canPlay}
+						className={`w-full max-w-md py-4 rounded-xl font-bold text-lg transition-colors shadow-lg ${
+							canPlay
+								? "bg-green-500 hover:bg-green-400 active:bg-green-600 shadow-green-900/40"
+								: "bg-white/10 text-white/30 cursor-not-allowed"
+						}`}
+					>
+						{javaReady
+						? "플레이"
+						: javaState?.status === "downloading"
+						? `Java ${requiredJavaVersion} 다운로드 중... ${(javaState as any).progress}%`
+						: javaState?.status === "extracting"
+						? `Java ${requiredJavaVersion} 압축 해제 중...`
+						: `Java ${requiredJavaVersion} 준비 중...`}
 					</button>
 				)}
 
@@ -143,11 +217,49 @@ function App() {
 			</main>
 
 			<footer className="px-6 py-3 bg-[#16213e] border-t border-white/10 flex justify-between items-center">
-				<span className="text-xs text-white/20">모드 설치 상태: 미확인</span>
-				<span className="text-xs text-white/20">Java: 미확인</span>
+				<span className="text-xs text-white/30">
+					{selectedServer ? `서버: ${selectedServer.ip}` : "서버 미선택"}
+				</span>
+				<span className="text-xs text-white/30">
+					{javaState?.status === "ready"
+						? `Java ${requiredJavaVersion} ✓`
+						: javaState?.status === "downloading"
+						? `Java 다운로드 중 ${(javaState as any).progress}%`
+						: javaState?.status === "extracting"
+						? `Java 압축 해제 중...`
+						: requiredJavaVersion
+						? `Java ${requiredJavaVersion} 확인 중`
+						: ""}
+				</span>
 			</footer>
 		</div>
 	);
+}
+
+function JavaStatusBadge({ state, version }: { state: JavaState | undefined; version: number }) {
+	if (!state) {
+		return <span className="text-white/40 text-xs">Java {version} 확인 중...</span>;
+	}
+	if (state.status === "checking") {
+		return <span className="text-white/40 text-xs">확인 중...</span>;
+	}
+	if (state.status === "ready") {
+		return <span className="text-green-400 text-xs">Java {version} ✓</span>;
+	}
+	if (state.status === "downloading") {
+		return <span className="text-yellow-400 text-xs">다운로드 중 {state.progress}%</span>;
+	}
+	if (state.status === "extracting") {
+		return <span className="text-yellow-400 text-xs">압축 해제 중...</span>;
+	}
+	return <span className="text-red-400 text-xs">오류</span>;
+}
+
+function getRequiredJavaVersion(mcVersion: string): number {
+	const [, minor] = mcVersion.split(".").map(Number);
+	if (minor >= 21) return 21;
+	if (minor >= 17) return 17;
+	return 8;
 }
 
 export default App;

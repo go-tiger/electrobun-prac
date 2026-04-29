@@ -2,6 +2,8 @@ import { BrowserWindow, BrowserView, Updater } from 'electrobun/bun';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { startLoginFlow, loadTokens, refreshTokensIfNeeded } from './auth';
+import { loadServers, getRequiredJavaVersion } from './servers';
+import { ensureJava, findJava } from './java';
 import type { LauncherRPCSchema } from '../shared/rpcSchema';
 
 const DEV_SERVER_PORT = 5173;
@@ -42,6 +44,10 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
         );
         await Bun.write(path, '');
         return { loggedIn: false, username: null };
+      },
+      async getServers() {
+        const data = await loadServers();
+        return { servers: data.servers };
       },
     },
     messages: {
@@ -93,6 +99,35 @@ function makeUpdateHtml(message: string, progress?: number): string {
 </body></html>`;
 }
 
+async function ensureJavaForServers() {
+  const { servers } = await loadServers();
+  if (servers.length === 0) return;
+
+  const versions = [...new Set(servers.map(s => getRequiredJavaVersion(s.mcVersion)))];
+
+  for (const version of versions) {
+    rpc.send.javaStatus({ status: 'checking' });
+
+    const existing = await findJava(version);
+    if (existing) {
+      rpc.send.javaStatus({ status: 'ready', path: existing, version });
+      continue;
+    }
+
+    rpc.send.javaStatus({ status: 'downloading', version, progress: 0 });
+    try {
+      const path = await ensureJava(
+        version,
+        (progress) => { rpc.send.javaStatus({ status: 'downloading', version, progress }); },
+        () => { rpc.send.javaStatus({ status: 'extracting', version }); }
+      );
+      rpc.send.javaStatus({ status: 'ready', path, version });
+    } catch (e: any) {
+      rpc.send.javaStatus({ status: 'error', message: e?.message ?? 'Java 설치 실패' });
+    }
+  }
+}
+
 async function checkForUpdateAndOpen() {
   // 저장된 토큰이 있으면 백그라운드에서 갱신 (실패해도 무시 — UI에서 로그인 상태 표시)
   refreshTokensIfNeeded().catch(() => {});
@@ -101,11 +136,16 @@ async function checkForUpdateAndOpen() {
 
   if (!info?.updateAvailable) {
     const url = await getMainViewUrl();
-    new BrowserWindow({
-      title: 'React + Tailwind + Vite',
+    const win = new BrowserWindow({
+      title: 'MC Launcher',
       url,
       rpc,
       frame: { width: 900, height: 700, x: 200, y: 200 },
+    });
+
+    // webview가 준비된 후 Java 탐색/설치 시작
+    win.webview.on('dom-ready', () => {
+      ensureJavaForServers().catch(() => {});
     });
     return;
   }
