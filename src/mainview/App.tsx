@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { electroview } from "./electroview";
-import type { ServerConfig, JavaState, McStatus, McInstallProgress, ModLoaderProgress } from "../shared/rpcSchema";
+import type { ServerConfig, JavaState, McStatus, McInstallProgress, ModLoaderProgress, ModsProgress } from "../shared/rpcSchema";
 
 const rpcRequest = (electroview.rpc as any)?.request;
 const rpcSend = (electroview.rpc as any)?.send;
@@ -20,6 +20,7 @@ function App() {
 	const [javaStates, setJavaStates] = useState<Record<number, JavaState>>({});
 	const [mcStatus, setMcStatus] = useState<McStatus>({ status: "idle" });
 	const [modLoaderStatus, setModLoaderStatus] = useState<ModLoaderProgress | null>(null);
+	const [modsStatus, setModsStatus] = useState<ModsProgress | null>(null);
 
 	useEffect(() => {
 		rpcRequest?.getAppVersion()
@@ -59,6 +60,10 @@ function App() {
 			setModLoaderStatus(payload.stage === "done" ? null : payload);
 		});
 
+		rpcListen?.("modsStatus", (payload: ModsProgress) => {
+			setModsStatus(payload.stage === "done" ? null : payload);
+		});
+
 		rpcListen?.("javaStatus", (payload: JavaState) => {
 			if (payload.status === "ready" || payload.status === "downloading" || payload.status === "extracting") {
 				setJavaStates(prev => ({ ...prev, [payload.version]: payload }));
@@ -91,7 +96,7 @@ function App() {
 
 	const javaState = requiredJavaVersion ? javaStates[requiredJavaVersion] : undefined;
 	const javaReady = javaState?.status === "ready";
-	const isBusy = mcStatus.status === "installing" || mcStatus.status === "launching" || mcStatus.status === "running" || modLoaderStatus !== null;
+	const isBusy = mcStatus.status === "installing" || mcStatus.status === "launching" || mcStatus.status === "running" || modLoaderStatus !== null || modsStatus !== null;
 	const canPlay = auth.status === "loggedIn" && javaReady && !isBusy;
 
 	function handlePlay() {
@@ -220,6 +225,8 @@ function App() {
 								? "게임 실행됨"
 								: modLoaderStatus !== null
 								? getModLoaderText(modLoaderStatus)
+								: modsStatus !== null
+								? getModsText(modsStatus)
 								: javaReady
 								? "플레이"
 								: javaState?.status === "downloading"
@@ -284,6 +291,14 @@ function JavaStatusBadge({ state, version }: { state: JavaState | undefined; ver
 		return <span className="text-yellow-400 text-xs">압축 해제 중...</span>;
 	}
 	return <span className="text-red-400 text-xs">오류</span>;
+}
+
+function getModsText(progress: ModsProgress): string {
+	switch (progress.stage) {
+		case "checking": return `모드 확인 중... ${progress.current}/${progress.total}`;
+		case "downloading": return `모드 다운로드 중... ${progress.current}/${progress.total} (${progress.progress}%)`;
+		case "done": return "플레이";
+	}
 }
 
 function getModLoaderText(progress: ModLoaderProgress): string {

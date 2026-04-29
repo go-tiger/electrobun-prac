@@ -5,7 +5,13 @@ import { startLoginFlow, loadTokens, refreshTokensIfNeeded } from './auth';
 import { loadServers, getRequiredJavaVersion } from './servers';
 import { ensureJava, findJava } from './java';
 import { isMinecraftInstalled, installMinecraft, buildLaunchArgs } from './minecraft';
-import { installModLoader, getLatestLoaderVersion, getModLoaderLaunchOverride, isModLoaderInstalled } from './modloader';
+import {
+  installModLoader,
+  getLatestLoaderVersion,
+  getModLoaderLaunchOverride,
+  isModLoaderInstalled,
+} from './modloader';
+import { installMods } from './mods';
 import type { LauncherRPCSchema } from '../shared/rpcSchema';
 
 const DEV_SERVER_PORT = 5173;
@@ -39,11 +45,7 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
         return { loggedIn: true, username: tokens.mcUsername };
       },
       async logout() {
-        const path = join(
-          process.env['APPDATA'] || process.env['HOME'] || '.',
-          'mc-launcher',
-          'tokens.json'
-        );
+        const path = join(process.env['APPDATA'] || process.env['HOME'] || '.', 'mc-launcher', 'tokens.json');
         await Bun.write(path, '');
         return { loggedIn: false, username: null };
       },
@@ -67,7 +69,7 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
           const server = servers.find(s => s.id === payload.serverId);
           if (!server) throw new Error('서버를 찾을 수 없습니다.');
 
-          const tokens = await refreshTokensIfNeeded().catch(() => null) ?? await loadTokens();
+          const tokens = (await refreshTokensIfNeeded().catch(() => null)) ?? (await loadTokens());
           if (!tokens) throw new Error('로그인이 필요합니다.');
 
           const javaVersion = getRequiredJavaVersion(server.mcVersion);
@@ -75,34 +77,49 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
           // Java 확보
           const javaPath = await ensureJava(
             javaVersion,
-            (progress) => { rpc.send.javaStatus({ status: 'downloading', version: javaVersion, progress }); },
-            () => { rpc.send.javaStatus({ status: 'extracting', version: javaVersion }); }
+            progress => {
+              rpc.send.javaStatus({ status: 'downloading', version: javaVersion, progress });
+            },
+            () => {
+              rpc.send.javaStatus({ status: 'extracting', version: javaVersion });
+            },
           );
           rpc.send.javaStatus({ status: 'ready', path: javaPath, version: javaVersion });
 
           // Minecraft 설치
           if (!isMinecraftInstalled(server.mcVersion)) {
-            await installMinecraft(server.mcVersion, (progress) => {
+            await installMinecraft(server.mcVersion, progress => {
               rpc.send.mcStatus({ status: 'installing', progress });
             });
           }
 
           // 모드 로더 설치
-          const loaderVersion = server.modLoader !== 'vanilla'
-            ? (server.loaderVersion ?? await getLatestLoaderVersion(server.mcVersion, server.modLoader))
-            : '';
+          const loaderVersion =
+            server.modLoader !== 'vanilla'
+              ? (server.loaderVersion ?? (await getLatestLoaderVersion(server.mcVersion, server.modLoader)))
+              : '';
           if (server.modLoader !== 'vanilla') {
             const installed = isModLoaderInstalled(server.mcVersion, server.modLoader, loaderVersion);
             if (!installed) {
-              await installModLoader(server.mcVersion, server.modLoader, loaderVersion, javaPath, (progress) => {
+              await installModLoader(server.mcVersion, server.modLoader, loaderVersion, javaPath, progress => {
                 rpc.send.modLoaderStatus(progress);
               });
             }
           }
 
+          // 모드 설치
+          if (server.mods && server.mods.length > 0) {
+            await installMods(server.id, server.mods, progress => {
+              rpc.send.modsStatus(progress);
+            });
+          }
+
           // 실행 인수 조립
           rpc.send.mcStatus({ status: 'launching' });
-          const modOverride = server.modLoader !== 'vanilla' ? await getModLoaderLaunchOverride(server.mcVersion, server.modLoader, loaderVersion) : null;
+          const modOverride =
+            server.modLoader !== 'vanilla'
+              ? await getModLoaderLaunchOverride(server.mcVersion, server.modLoader, loaderVersion)
+              : null;
           const args = await buildLaunchArgs({
             mcVersion: server.mcVersion,
             javaPath,
@@ -118,15 +135,20 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
           console.log('[launch] args:', args.join(' '));
           const mcLogPath = join(
             process.env['APPDATA'] || process.env['HOME'] || '.',
-            'mc-launcher', 'minecraft', 'tmp', 'mc-launch.log'
+            'mc-launcher',
+            'minecraft',
+            'tmp',
+            'mc-launch.log',
           );
           const mc = Bun.spawn(args, { stdio: ['ignore', Bun.file(mcLogPath), Bun.file(mcLogPath)] });
           rpc.send.mcStatus({ status: 'running' });
-          mc.exited.then(() => {
-            rpc.send.mcStatus({ status: 'idle' });
-          }).catch(() => {
-            rpc.send.mcStatus({ status: 'idle' });
-          });
+          mc.exited
+            .then(() => {
+              rpc.send.mcStatus({ status: 'idle' });
+            })
+            .catch(() => {
+              rpc.send.mcStatus({ status: 'idle' });
+            });
         } catch (e: any) {
           rpc.send.mcStatus({ status: 'error', message: e?.message ?? '실행 실패' });
         }
@@ -190,8 +212,13 @@ async function ensureJavaForServers() {
     try {
       const path = await ensureJava(
         version,
-        (progress) => { rpc.send.javaStatus({ status: 'downloading', version, progress }); },
-        () => { console.log('[index] extracting 전송'); rpc.send.javaStatus({ status: 'extracting', version }); }
+        progress => {
+          rpc.send.javaStatus({ status: 'downloading', version, progress });
+        },
+        () => {
+          console.log('[index] extracting 전송');
+          rpc.send.javaStatus({ status: 'extracting', version });
+        },
       );
       rpc.send.javaStatus({ status: 'ready', path, version });
     } catch (e: any) {

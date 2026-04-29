@@ -6,6 +6,13 @@ const SERVERS_PATH = join(
   "servers.json"
 );
 
+export type ModConfig = {
+  name: string;
+  url: string;
+  filename: string;
+  sha1: string;
+};
+
 export type ServerConfig = {
   id: string;
   name: string;
@@ -14,6 +21,7 @@ export type ServerConfig = {
   loaderVersion?: string; // 생략 시 최신 버전 자동 사용
   ip: string;
   port?: number;
+  mods?: ModConfig[];
 };
 
 export type ServersFile = {
