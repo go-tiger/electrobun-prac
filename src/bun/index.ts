@@ -12,6 +12,7 @@ import {
   isModLoaderInstalled,
 } from './modloader';
 import { installMods } from './mods';
+import { installFiles } from './files';
 import type { LauncherRPCSchema } from '../shared/rpcSchema';
 
 const DEV_SERVER_PORT = 5173;
@@ -111,6 +112,13 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
           if (server.mods && server.mods.length > 0) {
             await installMods(server.id, server.mods, progress => {
               rpc.send.modsStatus(progress);
+            });
+          }
+
+          // 파일 설치 (쉐이더, 리소스팩, 설정파일 등)
+          if (server.files && server.files.length > 0) {
+            await installFiles(server.files, progress => {
+              rpc.send.filesStatus(progress);
             });
           }
 

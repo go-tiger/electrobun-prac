@@ -13,6 +13,15 @@ export type ModConfig = {
   sha1: string;
 };
 
+export type FileConfig = {
+  url: string;
+  filename: string;
+  sha1: string;
+  path: string;        // game 폴더 기준 설치 경로 (예: "shaderpacks/BSL.zip")
+  overwrite: boolean;  // true: sha1 다르면 덮어쓰기, false: 없을 때만 설치
+  extract?: boolean;   // true: 확장자 보고 zip/.tar.gz 압축 해제
+};
+
 export type ServerConfig = {
   id: string;
   name: string;
@@ -22,6 +31,7 @@ export type ServerConfig = {
   ip: string;
   port?: number;
   mods?: ModConfig[];
+  files?: FileConfig[];
 };
 
 export type ServersFile = {

@@ -3,8 +3,9 @@ import type { ServerConfig } from "../bun/servers";
 import type { McInstallProgress } from "../bun/minecraft";
 import type { ModLoaderProgress } from "../bun/modloader";
 import type { ModsProgress } from "../bun/mods";
+import type { FilesProgress } from "../bun/files";
 
-export type { ServerConfig, McInstallProgress, ModLoaderProgress, ModsProgress };
+export type { ServerConfig, McInstallProgress, ModLoaderProgress, ModsProgress, FilesProgress };
 
 export type McStatus =
   | { status: "idle" }
@@ -43,6 +44,7 @@ export type LauncherRPCSchema = ElectrobunRPCSchema & {
 			mcStatus: McStatus;
 			modLoaderStatus: ModLoaderProgress;
 				modsStatus: ModsProgress;
+				filesStatus: FilesProgress;
 		};
 	};
 };

@@ -1,6 +1,6 @@
 {
   "name": "electrobun-react-tailwind-vite",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
   "scripts": {
     "start": "vite build && electrobun dev",
@@ -13,6 +13,7 @@
   "dependencies": {
     "@azure/msal-node": "^5.1.4",
     "electrobun": "1.16.0",
+    "fflate": "^0.8.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
