@@ -5,6 +5,7 @@ import { startLoginFlow, loadTokens, refreshTokensIfNeeded } from './auth';
 import { loadServers, getRequiredJavaVersion } from './servers';
 import { ensureJava, findJava } from './java';
 import { isMinecraftInstalled, installMinecraft, buildLaunchArgs } from './minecraft';
+import { installModLoader, getLatestLoaderVersion, getModLoaderLaunchOverride, isModLoaderInstalled } from './modloader';
 import type { LauncherRPCSchema } from '../shared/rpcSchema';
 
 const DEV_SERVER_PORT = 5173;
@@ -66,7 +67,7 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
           const server = servers.find(s => s.id === payload.serverId);
           if (!server) throw new Error('서버를 찾을 수 없습니다.');
 
-          const tokens = await refreshTokensIfNeeded().catch(() => loadTokens());
+          const tokens = await refreshTokensIfNeeded().catch(() => null) ?? await loadTokens();
           if (!tokens) throw new Error('로그인이 필요합니다.');
 
           const javaVersion = getRequiredJavaVersion(server.mcVersion);
@@ -86,8 +87,22 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
             });
           }
 
+          // 모드 로더 설치
+          const loaderVersion = server.modLoader !== 'vanilla'
+            ? (server.loaderVersion ?? await getLatestLoaderVersion(server.mcVersion, server.modLoader))
+            : '';
+          if (server.modLoader !== 'vanilla') {
+            const installed = isModLoaderInstalled(server.mcVersion, server.modLoader, loaderVersion);
+            if (!installed) {
+              await installModLoader(server.mcVersion, server.modLoader, loaderVersion, javaPath, (progress) => {
+                rpc.send.modLoaderStatus(progress);
+              });
+            }
+          }
+
           // 실행 인수 조립
           rpc.send.mcStatus({ status: 'launching' });
+          const modOverride = server.modLoader !== 'vanilla' ? await getModLoaderLaunchOverride(server.mcVersion, server.modLoader, loaderVersion) : null;
           const args = await buildLaunchArgs({
             mcVersion: server.mcVersion,
             javaPath,
@@ -96,11 +111,16 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
             accessToken: tokens.mcAccessToken,
             serverIp: server.ip,
             serverPort: server.port,
+            modOverride: modOverride ?? undefined,
           });
 
           // 게임 실행
           console.log('[launch] args:', args.join(' '));
-          const mc = Bun.spawn(args, { stdio: ['ignore', 'ignore', 'ignore'] });
+          const mcLogPath = join(
+            process.env['APPDATA'] || process.env['HOME'] || '.',
+            'mc-launcher', 'minecraft', 'tmp', 'mc-launch.log'
+          );
+          const mc = Bun.spawn(args, { stdio: ['ignore', Bun.file(mcLogPath), Bun.file(mcLogPath)] });
           rpc.send.mcStatus({ status: 'running' });
           mc.exited.then(() => {
             rpc.send.mcStatus({ status: 'idle' });

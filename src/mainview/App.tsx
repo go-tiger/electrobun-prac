@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { electroview } from "./electroview";
-import type { ServerConfig, JavaState, McStatus, McInstallProgress } from "../shared/rpcSchema";
+import type { ServerConfig, JavaState, McStatus, McInstallProgress, ModLoaderProgress } from "../shared/rpcSchema";
 
 const rpcRequest = (electroview.rpc as any)?.request;
 const rpcSend = (electroview.rpc as any)?.send;
@@ -19,6 +19,7 @@ function App() {
 	const [selectedServer, setSelectedServer] = useState<ServerConfig | null>(null);
 	const [javaStates, setJavaStates] = useState<Record<number, JavaState>>({});
 	const [mcStatus, setMcStatus] = useState<McStatus>({ status: "idle" });
+	const [modLoaderStatus, setModLoaderStatus] = useState<ModLoaderProgress | null>(null);
 
 	useEffect(() => {
 		rpcRequest?.getAppVersion()
@@ -54,6 +55,10 @@ function App() {
 			setMcStatus(payload);
 		});
 
+		rpcListen?.("modLoaderStatus", (payload: ModLoaderProgress) => {
+			setModLoaderStatus(payload.stage === "done" ? null : payload);
+		});
+
 		rpcListen?.("javaStatus", (payload: JavaState) => {
 			if (payload.status === "ready" || payload.status === "downloading" || payload.status === "extracting") {
 				setJavaStates(prev => ({ ...prev, [payload.version]: payload }));
@@ -86,7 +91,7 @@ function App() {
 
 	const javaState = requiredJavaVersion ? javaStates[requiredJavaVersion] : undefined;
 	const javaReady = javaState?.status === "ready";
-	const isBusy = mcStatus.status === "installing" || mcStatus.status === "launching" || mcStatus.status === "running";
+	const isBusy = mcStatus.status === "installing" || mcStatus.status === "launching" || mcStatus.status === "running" || modLoaderStatus !== null;
 	const canPlay = auth.status === "loggedIn" && javaReady && !isBusy;
 
 	function handlePlay() {
@@ -213,6 +218,8 @@ function App() {
 								? "실행 중..."
 								: mcStatus.status === "running"
 								? "게임 실행됨"
+								: modLoaderStatus !== null
+								? getModLoaderText(modLoaderStatus)
 								: javaReady
 								? "플레이"
 								: javaState?.status === "downloading"
@@ -277,6 +284,16 @@ function JavaStatusBadge({ state, version }: { state: JavaState | undefined; ver
 		return <span className="text-yellow-400 text-xs">압축 해제 중...</span>;
 	}
 	return <span className="text-red-400 text-xs">오류</span>;
+}
+
+function getModLoaderText(progress: ModLoaderProgress): string {
+	switch (progress.stage) {
+		case "checking": return "모드 로더 확인 중...";
+		case "downloading_installer": return `모드 로더 다운로드 중... ${progress.progress}%`;
+		case "installing": return "모드 로더 설치 중...";
+		case "downloading_libraries": return `모드 로더 라이브러리 ${progress.current}/${progress.total}`;
+		case "done": return "플레이";
+	}
 }
 
 function getMcInstallText(progress: McInstallProgress): string {

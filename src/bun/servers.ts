@@ -10,7 +10,8 @@ export type ServerConfig = {
   id: string;
   name: string;
   mcVersion: string;
-  modLoader: "fabric" | "forge" | "quilt" | "neoforge" | "vanilla";
+  modLoader: "fabric" | "forge" | "neoforge" | "vanilla";
+  loaderVersion?: string; // 생략 시 최신 버전 자동 사용
   ip: string;
   port?: number;
 };

@@ -242,7 +242,7 @@ export async function refreshTokensIfNeeded(): Promise<AuthTokens | null> {
     await saveTokens(tokens);
     return tokens;
   } catch {
-    return null;
+    return saved;
   }
 }
 

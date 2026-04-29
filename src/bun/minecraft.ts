@@ -1,5 +1,6 @@
 import { join } from "path";
 import { existsSync, mkdirSync } from "fs";
+import type { ModLoaderLaunchOverride } from "./modloader";
 
 const MC_BASE = join(
   process.env["APPDATA"] || process.env["HOME"] || ".",
@@ -179,8 +180,9 @@ export async function buildLaunchArgs(params: {
   serverIp?: string;
   serverPort?: number;
   memoryMb?: number;
+  modOverride?: ModLoaderLaunchOverride;
 }): Promise<string[]> {
-  const { mcVersion, javaPath, username, uuid, accessToken, serverIp, serverPort, memoryMb = 2048 } = params;
+  const { mcVersion, javaPath, username, uuid, accessToken, serverIp, serverPort, memoryMb = 2048, modOverride } = params;
   const meta = await getVersionMeta(mcVersion);
 
   const gameDir = join(MC_BASE, "game");
@@ -190,10 +192,22 @@ export async function buildLaunchArgs(params: {
 
   // classpath 조립
   const libs = meta.libraries.filter(isLibraryAllowed).filter(l => l.downloads?.artifact);
-  const classpathEntries = [
-    ...libs.map(l => join(MC_BASE, "libraries", l.downloads!.artifact!.path.replace(/\//g, "\\"))),
-    join(MC_BASE, "versions", mcVersion, `${mcVersion}.jar`),
-  ];
+  const vanillaLibJars = libs.map(l => join(MC_BASE, "libraries", l.downloads!.artifact!.path.replace(/\//g, "\\")));
+  const vanillaJar = join(MC_BASE, "versions", mcVersion, `${mcVersion}.jar`);
+
+  let classpathEntries: string[];
+  if (modOverride?.replaceClasspath) {
+    // Forge/NeoForge: 자체 classpath + vanilla libs 중 Forge가 포함하지 않은 것 (LWJGL 등)
+    const forgeJarNames = new Set(modOverride.replaceClasspath.map(p => p.split("\\").pop()!));
+    const extraVanillaLibs = vanillaLibJars.filter(p => !forgeJarNames.has(p.split("\\").pop()!));
+    classpathEntries = [...modOverride.replaceClasspath, ...extraVanillaLibs];
+  } else {
+    classpathEntries = [
+      ...(modOverride?.extraLibraries ?? []),
+      ...vanillaLibJars,
+      vanillaJar,
+    ];
+  }
   const classpath = classpathEntries.join(";");
 
   const vars: Record<string, string> = {
@@ -269,9 +283,11 @@ export async function buildLaunchArgs(params: {
     javaPath,
     `-Xmx${memoryMb}m`,
     `-Xms${Math.min(512, memoryMb)}m`,
+    ...(modOverride?.extraJvmArgs ?? []),
     ...jvmArgs,
-    meta.mainClass,
+    modOverride?.mainClass ?? meta.mainClass,
     ...gameArgs,
+    ...(modOverride?.extraGameArgs ?? []),
   ];
 
   if (serverIp) {
