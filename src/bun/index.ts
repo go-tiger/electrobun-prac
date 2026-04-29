@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { startLoginFlow, loadTokens, refreshTokensIfNeeded } from './auth';
 import { loadServers, getRequiredJavaVersion } from './servers';
 import { ensureJava, findJava } from './java';
+import { isMinecraftInstalled, installMinecraft, buildLaunchArgs } from './minecraft';
 import type { LauncherRPCSchema } from '../shared/rpcSchema';
 
 const DEV_SERVER_PORT = 5173;
@@ -57,6 +58,57 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
           rpc.send.loginResult({ success: true, username: tokens.mcUsername });
         } catch (e: any) {
           rpc.send.loginResult({ success: false, error: e?.message ?? '로그인 실패' });
+        }
+      },
+      async launch(payload: { serverId: string }) {
+        try {
+          const { servers } = await loadServers();
+          const server = servers.find(s => s.id === payload.serverId);
+          if (!server) throw new Error('서버를 찾을 수 없습니다.');
+
+          const tokens = await refreshTokensIfNeeded().catch(() => loadTokens());
+          if (!tokens) throw new Error('로그인이 필요합니다.');
+
+          const javaVersion = getRequiredJavaVersion(server.mcVersion);
+
+          // Java 확보
+          const javaPath = await ensureJava(
+            javaVersion,
+            (progress) => { rpc.send.javaStatus({ status: 'downloading', version: javaVersion, progress }); },
+            () => { rpc.send.javaStatus({ status: 'extracting', version: javaVersion }); }
+          );
+          rpc.send.javaStatus({ status: 'ready', path: javaPath, version: javaVersion });
+
+          // Minecraft 설치
+          if (!isMinecraftInstalled(server.mcVersion)) {
+            await installMinecraft(server.mcVersion, (progress) => {
+              rpc.send.mcStatus({ status: 'installing', progress });
+            });
+          }
+
+          // 실행 인수 조립
+          rpc.send.mcStatus({ status: 'launching' });
+          const args = await buildLaunchArgs({
+            mcVersion: server.mcVersion,
+            javaPath,
+            username: tokens.mcUsername,
+            uuid: tokens.mcUuid,
+            accessToken: tokens.mcAccessToken,
+            serverIp: server.ip,
+            serverPort: server.port,
+          });
+
+          // 게임 실행
+          console.log('[launch] args:', args.join(' '));
+          const mc = Bun.spawn(args, { stdio: ['ignore', 'ignore', 'ignore'] });
+          rpc.send.mcStatus({ status: 'running' });
+          mc.exited.then(() => {
+            rpc.send.mcStatus({ status: 'idle' });
+          }).catch(() => {
+            rpc.send.mcStatus({ status: 'idle' });
+          });
+        } catch (e: any) {
+          rpc.send.mcStatus({ status: 'error', message: e?.message ?? '실행 실패' });
         }
       },
     },
@@ -119,7 +171,7 @@ async function ensureJavaForServers() {
       const path = await ensureJava(
         version,
         (progress) => { rpc.send.javaStatus({ status: 'downloading', version, progress }); },
-        () => { rpc.send.javaStatus({ status: 'extracting', version }); }
+        () => { console.log('[index] extracting 전송'); rpc.send.javaStatus({ status: 'extracting', version }); }
       );
       rpc.send.javaStatus({ status: 'ready', path, version });
     } catch (e: any) {
@@ -143,9 +195,9 @@ async function checkForUpdateAndOpen() {
       frame: { width: 900, height: 700, x: 200, y: 200 },
     });
 
-    // webview가 준비된 후 Java 탐색/설치 시작
+    // dom-ready 후 소켓 RPC 연결까지 대기 후 Java 탐색/설치 시작
     win.webview.on('dom-ready', () => {
-      ensureJavaForServers().catch(() => {});
+      setTimeout(() => ensureJavaForServers().catch(() => {}), 1000);
     });
     return;
   }

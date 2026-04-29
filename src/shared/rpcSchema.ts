@@ -1,7 +1,15 @@
 import type { ElectrobunRPCSchema } from "electrobun/bun";
 import type { ServerConfig } from "../bun/servers";
+import type { McInstallProgress } from "../bun/minecraft";
 
-export type { ServerConfig };
+export type { ServerConfig, McInstallProgress };
+
+export type McStatus =
+  | { status: "idle" }
+  | { status: "installing"; progress: McInstallProgress }
+  | { status: "launching" }
+  | { status: "running" }
+  | { status: "error"; message: string };
 
 export type JavaState =
   | { status: "checking" }
@@ -21,6 +29,7 @@ export type LauncherRPCSchema = ElectrobunRPCSchema & {
 		// bun이 수신하는 메시지 (webview → bun)
 		messages: {
 			startLogin: Record<string, never>;
+			launch: { serverId: string };
 		};
 	};
 	webview: {
@@ -29,6 +38,7 @@ export type LauncherRPCSchema = ElectrobunRPCSchema & {
 		messages: {
 			loginResult: { success: boolean; username?: string; error?: string };
 			javaStatus: JavaState;
+			mcStatus: McStatus;
 		};
 	};
 };

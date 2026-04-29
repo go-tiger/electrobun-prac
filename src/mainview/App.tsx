@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { electroview } from "./electroview";
-import type { ServerConfig, JavaState } from "../shared/rpcSchema";
+import type { ServerConfig, JavaState, McStatus, McInstallProgress } from "../shared/rpcSchema";
 
 const rpcRequest = (electroview.rpc as any)?.request;
 const rpcSend = (electroview.rpc as any)?.send;
@@ -18,6 +18,7 @@ function App() {
 	const [servers, setServers] = useState<ServerConfig[]>([]);
 	const [selectedServer, setSelectedServer] = useState<ServerConfig | null>(null);
 	const [javaStates, setJavaStates] = useState<Record<number, JavaState>>({});
+	const [mcStatus, setMcStatus] = useState<McStatus>({ status: "idle" });
 
 	useEffect(() => {
 		rpcRequest?.getAppVersion()
@@ -49,8 +50,12 @@ function App() {
 			}
 		});
 
+		rpcListen?.("mcStatus", (payload: McStatus) => {
+			setMcStatus(payload);
+		});
+
 		rpcListen?.("javaStatus", (payload: JavaState) => {
-			if (payload.status === "ready" || payload.status === "downloading") {
+			if (payload.status === "ready" || payload.status === "downloading" || payload.status === "extracting") {
 				setJavaStates(prev => ({ ...prev, [payload.version]: payload }));
 			} else if (payload.status === "error") {
 				// 에러는 모든 버전에 표시
@@ -81,7 +86,14 @@ function App() {
 
 	const javaState = requiredJavaVersion ? javaStates[requiredJavaVersion] : undefined;
 	const javaReady = javaState?.status === "ready";
-	const canPlay = auth.status === "loggedIn" && javaReady;
+	const isBusy = mcStatus.status === "installing" || mcStatus.status === "launching" || mcStatus.status === "running";
+	const canPlay = auth.status === "loggedIn" && javaReady && !isBusy;
+
+	function handlePlay() {
+		if (!selectedServer || !canPlay) return;
+		setMcStatus({ status: "launching" });
+		rpcSend?.launch({ serverId: selectedServer.id });
+	}
 
 	return (
 		<div className="h-screen bg-[#1a1a2e] text-white flex flex-col select-none">
@@ -185,22 +197,34 @@ function App() {
 				)}
 
 				{auth.status === "loggedIn" && (
-					<button
-						disabled={!canPlay}
-						className={`w-full max-w-md py-4 rounded-xl font-bold text-lg transition-colors shadow-lg ${
-							canPlay
-								? "bg-green-500 hover:bg-green-400 active:bg-green-600 shadow-green-900/40"
-								: "bg-white/10 text-white/30 cursor-not-allowed"
-						}`}
-					>
-						{javaReady
-						? "플레이"
-						: javaState?.status === "downloading"
-						? `Java ${requiredJavaVersion} 다운로드 중... ${(javaState as any).progress}%`
-						: javaState?.status === "extracting"
-						? `Java ${requiredJavaVersion} 압축 해제 중...`
-						: `Java ${requiredJavaVersion} 준비 중...`}
-					</button>
+					<>
+						<button
+							onClick={handlePlay}
+							disabled={!canPlay}
+							className={`w-full max-w-md py-4 rounded-xl font-bold text-lg transition-colors shadow-lg ${
+								canPlay
+									? "bg-green-500 hover:bg-green-400 active:bg-green-600 shadow-green-900/40"
+									: "bg-white/10 text-white/30 cursor-not-allowed"
+							}`}
+						>
+							{mcStatus.status === "installing"
+								? getMcInstallText(mcStatus.progress)
+								: mcStatus.status === "launching"
+								? "실행 중..."
+								: mcStatus.status === "running"
+								? "게임 실행됨"
+								: javaReady
+								? "플레이"
+								: javaState?.status === "downloading"
+								? `Java ${requiredJavaVersion} 다운로드 중... ${(javaState as any).progress}%`
+								: javaState?.status === "extracting"
+								? `Java ${requiredJavaVersion} 압축 해제 중...`
+								: `Java ${requiredJavaVersion} 준비 중...`}
+						</button>
+						{mcStatus.status === "error" && (
+							<p className="text-red-400 text-sm w-full max-w-md text-center">{(mcStatus as any).message}</p>
+						)}
+					</>
 				)}
 
 				{auth.status === "error" && (
@@ -253,6 +277,16 @@ function JavaStatusBadge({ state, version }: { state: JavaState | undefined; ver
 		return <span className="text-yellow-400 text-xs">압축 해제 중...</span>;
 	}
 	return <span className="text-red-400 text-xs">오류</span>;
+}
+
+function getMcInstallText(progress: McInstallProgress): string {
+	switch (progress.stage) {
+		case "meta": return "버전 정보 로드 중...";
+		case "client": return `게임 다운로드 중... ${progress.progress}%`;
+		case "libraries": return `라이브러리 설치 중... ${progress.current}/${progress.total}`;
+		case "assets": return `에셋 다운로드 중... ${progress.current}/${progress.total}`;
+		case "done": return "설치 완료";
+	}
 }
 
 function getRequiredJavaVersion(mcVersion: string): number {

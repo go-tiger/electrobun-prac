@@ -1,5 +1,5 @@
 import { join } from "path";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readdirSync } from "fs";
 
 const LAUNCHER_JAVA_BASE = join(
   process.env["APPDATA"] || process.env["HOME"] || ".",
@@ -69,8 +69,7 @@ async function findSystemJava(requiredVersion: number): Promise<string | null> {
   // 4. Program Files 하위 전체 스캔 (Adoptium, Microsoft, Zulu 등)
   for (const root of ["C:\\Program Files\\Java", "C:\\Program Files\\Eclipse Adoptium", "C:\\Program Files\\Microsoft"]) {
     if (!existsSync(root)) continue;
-    const proc = Bun.spawnSync(["cmd", "/c", `dir /b "${root}"`], { stdio: ["ignore", "pipe", "ignore"] });
-    const dirs = new TextDecoder().decode(proc.stdout).trim().split("\r\n");
+    const dirs = readdirSync(root);
     for (const dir of dirs) {
       const bin = join(root, dir, "bin", "java.exe");
       if (existsSync(bin)) {
@@ -86,10 +85,27 @@ async function findSystemJava(requiredVersion: number): Promise<string | null> {
 // ── 런처 내부 Java 탐색 ───────────────────────────────────────────────────────
 
 async function findLauncherJava(requiredVersion: number): Promise<string | null> {
-  const bin = join(LAUNCHER_JAVA_BASE, String(requiredVersion), "bin", "java.exe");
-  if (!existsSync(bin)) return null;
-  const ver = await checkJavaAtPath(bin);
-  return ver === requiredVersion ? bin : null;
+  const versionDir = join(LAUNCHER_JAVA_BASE, String(requiredVersion));
+  if (!existsSync(versionDir)) return null;
+
+  // 직접 경로 시도
+  const directBin = join(versionDir, "bin", "java.exe");
+  if (existsSync(directBin)) {
+    const ver = await checkJavaAtPath(directBin);
+    if (ver === requiredVersion) return directBin;
+  }
+
+  // Adoptium zip 해제 시 서브디렉토리가 생김 (예: jdk-17.0.18+8-jre)
+  const dirs = readdirSync(versionDir);
+  for (const dir of dirs) {
+    const bin = join(versionDir, dir, "bin", "java.exe");
+    if (existsSync(bin)) {
+      const ver = await checkJavaAtPath(bin);
+      if (ver === requiredVersion) return bin;
+    }
+  }
+
+  return null;
 }
 
 // ── Adoptium 다운로드 ─────────────────────────────────────────────────────────
@@ -135,22 +151,31 @@ async function downloadAndExtract(
   await writer.flush();
   writer.end();
 
+  console.log('[java] onExtracting 호출');
   onExtracting();
+  console.log('[java] 500ms 대기');
+  await new Promise(r => setTimeout(r, 500));
+  console.log('[java] 압축 해제 시작');
 
-  // 압축 해제 (Windows 기본 tar 사용 — zip 지원)
-  Bun.spawnSync(
-    ["powershell", "-Command", `Expand-Archive -Path "${zipPath}" -DestinationPath "${destDir}" -Force`],
-    { stdio: ["ignore", "ignore", "ignore"] }
-  );
+  // 압축 해제
+  await new Promise<void>((resolve, reject) => {
+    const proc = Bun.spawn(
+      ["powershell", "-Command", `Expand-Archive -Path "${zipPath}" -DestinationPath "${destDir}" -Force`],
+      { stdio: ["ignore", "ignore", "ignore"] }
+    );
+    proc.exited.then((code) => code === 0 ? resolve() : reject(new Error(`Expand-Archive failed: ${code}`))).catch(reject);
+  });
 
   // zip 삭제
-  await Bun.file(zipPath).exists() && Bun.spawnSync(["cmd", "/c", `del "${zipPath}"`]);
+  await new Promise<void>((resolve) => {
+    const proc = Bun.spawn(["cmd", "/c", `del "${zipPath.replace(/\//g, "\\")}"`], {
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    proc.exited.then(() => resolve()).catch(() => resolve());
+  });
 
   // Adoptium zip 내부에 jre-버전 폴더가 하나 있음 → 그 안의 bin/java.exe
-  const proc = Bun.spawnSync(["cmd", "/c", `dir /b "${destDir}"`], {
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  const subDir = new TextDecoder().decode(proc.stdout).trim().split("\r\n")[0];
+  const subDir = readdirSync(destDir)[0];
   const javaExe = join(destDir, subDir, "bin", "java.exe");
 
   onProgress(100);
