@@ -39,7 +39,22 @@ async function checkJavaAtPath(javaBin: string): Promise<number | null> {
 async function findSystemJava(requiredVersion: number): Promise<string | null> {
   // 1. PATH의 java
   const fromPath = await checkJavaAtPath("java");
-  if (fromPath === requiredVersion) return "java";
+  if (fromPath === requiredVersion) {
+    // 'java'의 전체 경로 찾기
+    try {
+      const res = Bun.spawnSync(["where", "java"], { stdio: ["ignore", "pipe", "pipe"] });
+      if (res.success) {
+        const output = new TextDecoder().decode(res.stdout).trim().split('\n')[0].trim();
+        console.log('[java] where java output:', JSON.stringify(output));
+        if (output && existsSync(output)) {
+          console.log('[java] found java at:', output);
+          return output;
+        }
+      }
+    } catch (e) {
+      console.error('[java] where java error:', e);
+    }
+  }
 
   // 2. JAVA_HOME
   const javaHome = process.env["JAVA_HOME"];

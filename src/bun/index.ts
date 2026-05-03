@@ -1,6 +1,7 @@
 import { BrowserWindow, BrowserView, Updater } from 'electrobun/bun';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { mkdirSync } from 'fs';
 import { startLoginFlow, loadTokens, refreshTokensIfNeeded } from './auth';
 import { loadServers, getRequiredJavaVersion } from './servers';
 import { ensureJava, findJava } from './java';
@@ -140,7 +141,7 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
           });
 
           // 게임 실행
-          console.log('[launch] args:', args.join(' '));
+          console.log('[launch] args[0]:', JSON.stringify(args[0]));
           const mcLogPath = join(
             process.env['APPDATA'] || process.env['HOME'] || '.',
             'mc-launcher',
@@ -148,7 +149,13 @@ const rpc = BrowserView.defineRPC<LauncherRPCSchema>({
             'tmp',
             'mc-launch.log',
           );
-          const mc = Bun.spawn(args, { stdio: ['ignore', Bun.file(mcLogPath), Bun.file(mcLogPath)] });
+          mkdirSync(mcLogPath.substring(0, mcLogPath.lastIndexOf("\\") || mcLogPath.lastIndexOf("/")), { recursive: true });
+          console.log('[launch] spawning minecraft...');
+          // Bun.spawn on Windows works better with shell: true
+          const mc = Bun.spawn(args, {
+            stdio: ['ignore', Bun.file(mcLogPath), Bun.file(mcLogPath)],
+            shell: true,
+          });
           rpc.send.mcStatus({ status: 'running' });
           mc.exited
             .then(() => {
@@ -247,7 +254,7 @@ async function checkForUpdateAndOpen() {
       title: 'MC Launcher',
       url,
       rpc,
-      frame: { width: 900, height: 700, x: 200, y: 200 },
+      frame: { width: 1000, height: 700, x: 100, y: 100 },
     });
 
     // dom-ready 후 소켓 RPC 연결까지 대기 후 Java 탐색/설치 시작
