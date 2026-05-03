@@ -1,5 +1,5 @@
 const appName = "react-tailwind-vite";
-const version = "0.0.16";
+const version = "0.0.17";
 
 export default {
 	// electrobun fields
